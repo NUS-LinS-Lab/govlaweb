@@ -48,6 +48,16 @@
     <script src="./static/js/bulma-slider.min.js"></script>
     <script src="./static/js/index.js"></script>
 
+    <!-- three.js (3D point-cloud viewer) -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+
     <!-- MathJax -->
     <script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML"></script>        
     <script type="text/x-mathjax-config">
@@ -109,14 +119,14 @@
               <div class="column has-text-centered">
                 <div class="publication-links">
                   <!-- PDF Link -->
-                  <!-- <span class="link-block">
-                    <a href="#" class="external-link button is-normal is-rounded is-dark">
+                  <span class="link-block">
+                    <a href="https://arxiv.org/abs/2506.23919" class="external-link button is-normal is-rounded is-dark">
                       <span class="icon">
                         <i class="ai ai-arxiv"></i>
                       </span>
                       <span>arXiv</span>
                     </a>
-                  </span> -->
+                  </span>
                   <span class="link-block">
                     <a href="./static/data/paper.pdf" class="external-link button is-normal is-rounded is-dark" target="_blank"> 
                       <span class="icon">
@@ -136,11 +146,11 @@
 
                   <!-- Code Link -->
                   <span class="link-block">
-                    <a href="#" class="external-link button is-normal is-rounded is-dark">
+                    <a href="https://github.com/chenhn02/Goal-VLA" class="external-link button is-normal is-rounded is-dark">
                       <span class="icon">
                         <i class="fas fa-code"></i>
                       </span>
-                      <span>Code (Coming Soon)</span>
+                      <span>Code (Released)</span>
                     </a>
                   </span>
 
@@ -237,23 +247,47 @@ without any task-specific or additional training.​</h3>
                   </div>
                 </div>
                 
-                <!-- Right side: Goal Image/Transformation -->
+                <!-- Right side: Goal Image / 3D Point Cloud -->
                 <div class="column is-half">
                   <h3 class="title is-5">Goal Visualization</h3>
                   <div class="column has-text-centered">
                     <div class="select is-rounded">
                       <select id="display-selector">
-                        <option value="goal" selected="selected">Goal Image</option>
-                        <option value="transformation">Transformation</option>
+                        <option value="pointcloud" selected="selected">Transformation</option>
+                        <option value="goal">Goal Image</option>
                       </select>
                     </div>
                   </div>
                   <div class="display-container" style="margin-top: 20px;">
-                    <div id="goal-display">
+                    <div id="goal-display" style="display: none;">
                       <img id="goal-image" src="./static/data/real_world/tomato/rgb_goal.png" alt="Goal Image" style="max-width: 100%; border: 1px solid #ddd; border-radius: 5px;">
                     </div>
-                    <div id="transformation-display" style="display: none;">
-                      <img id="transformation-image" src="./static/data/real_world/tomato/trans.png" alt="Transformation" style="max-width: 100%; border: 1px solid #ddd; border-radius: 5px;">
+                    <div id="pointcloud-display">
+                      <div class="pc-viewer" id="pc-viewer">
+                        <canvas id="pc-canvas"></canvas>
+                        <div class="pc-status" data-pc-status>
+                          <div class="pc-spinner"></div>
+                          <span data-pc-status-text>Loading point cloud&hellip;</span>
+                        </div>
+                        <div class="pc-hint" data-pc-hint>
+                          <svg class="pc-hint-hand" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M9 11.5V4.75a1.25 1.25 0 0 1 2.5 0V10h.5V3.25a1.25 1.25 0 0 1 2.5 0V10h.5V4.75a1.25 1.25 0 0 1 2.5 0V11h.5V7.25a1.25 1.25 0 0 1 2.5 0v7.35c0 3.3-2.2 6.4-6 6.4-3.1 0-4.6-1.35-6.15-3.6l-2.9-4.25a1.28 1.28 0 0 1 .4-1.8c.6-.36 1.4-.2 1.85.4L9 14.2z"/>
+                          </svg>
+                          <span class="pc-hint-label">Drag to rotate &middot; scroll to zoom</span>
+                        </div>
+                      </div>
+                      <div class="pc-toolbar">
+                        <label class="pc-chip pc-chip-init is-on">
+                          <input type="checkbox" data-pc-layer="init" checked><span class="pc-swatch"></span><span>Initial State</span>
+                        </label>
+                        <label class="pc-chip pc-chip-goal is-on">
+                          <input type="checkbox" data-pc-layer="goal" checked><span class="pc-swatch"></span><span>Goal State</span>
+                        </label>
+                        <label class="pc-chip pc-chip-match is-on">
+                          <input type="checkbox" data-pc-layer="match" checked><span class="pc-swatch"></span><span>Correspondences</span>
+                        </label>
+                        <button type="button" class="pc-reset" data-pc-reset>Reset View</button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -265,39 +299,72 @@ without any task-specific or additional training.​</h3>
       </div>
     </section>
 
-    <script>
+    <script type="module">
       // Demo control scripts
+      import { PointCloudViewer } from './static/js/pointcloud.js';
+
       const videoSelector = document.getElementById('video-selector');
       const displaySelector = document.getElementById('display-selector');
       const demoVideo = document.getElementById('demo-video');
       const goalImage = document.getElementById('goal-image');
-      const transformationImage = document.getElementById('transformation-image');
       const goalDisplay = document.getElementById('goal-display');
-      const transformationDisplay = document.getElementById('transformation-display');
+      const pointCloudDisplay = document.getElementById('pointcloud-display');
 
       // Video and image mappings
       const experimentData = {
         'tomato': {
           video: './static/data/real_world/tomato/video.mp4',
-          goal: './static/data/real_world/tomato/rgb_goal.png',
-          transformation: './static/data/real_world/tomato/trans.png'
+          goal: './static/data/real_world/tomato/rgb_goal.png'
         },
         'sweep': {
           video: './static/data/real_world/sweep/video.mp4',
-          goal: './static/data/real_world/sweep/rgb_goal.png',
-          transformation: './static/data/real_world/sweep/trans.png'
+          goal: './static/data/real_world/sweep/rgb_goal.png'
         },
         'duck': {
           video: './static/data/real_world/duck/video.mp4',
-          goal: './static/data/real_world/duck/rgb_goal.png',
-          transformation: './static/data/real_world/duck/trans.png'
+          goal: './static/data/real_world/duck/rgb_goal.png'
         },
         'bottle': {
           video: './static/data/real_world/bottle/video.mp4',
-          goal: './static/data/real_world/bottle/rgb_goal.png',
-          transformation: './static/data/real_world/bottle/trans.png'
+          goal: './static/data/real_world/bottle/rgb_goal.png'
         },
       };
+
+      let viewer = null;
+
+      // The viewer is only built once the 3D tab is opened, so a visitor who
+      // never opens it never downloads the point clouds.
+      function ensureViewer() {
+        if (viewer) return viewer;
+        try {
+          viewer = new PointCloudViewer(document.getElementById('pc-viewer'));
+        } catch (err) {
+          console.error('[point cloud] WebGL unavailable', err);
+          document.querySelector('[data-pc-status-text]').textContent =
+            'Your browser could not start WebGL, so the 3D view is unavailable.';
+          document.querySelector('.pc-spinner').style.display = 'none';
+        }
+        return viewer;
+      }
+
+      function isPointCloudMode() {
+        return displaySelector.value === 'pointcloud';
+      }
+
+      function syncDisplay() {
+        const pointCloud = isPointCloudMode();
+        goalDisplay.style.display = pointCloud ? 'none' : 'block';
+        pointCloudDisplay.style.display = pointCloud ? 'block' : 'none';
+        if (pointCloud) {
+          const v = ensureViewer();
+          if (v) {
+            v.setActive(true);
+            v.setScene(videoSelector.value);
+          }
+        } else if (viewer) {
+          viewer.setActive(false);
+        }
+      }
 
       // Update video when selection changes
       videoSelector.addEventListener('change', function() {
@@ -305,23 +372,33 @@ without any task-specific or additional training.​</h3>
         const data = experimentData[selected];
         demoVideo.src = data.video;
         goalImage.src = data.goal;
-        transformationImage.src = data.transformation;
-        
+
+        if (isPointCloudMode()) {
+          const v = ensureViewer();
+          if (v) v.setScene(selected);
+        }
+
         // Auto play the new video
         demoVideo.load();
         demoVideo.play().catch(e => console.log('Auto-play was prevented'));
       });
 
       // Toggle display mode
-      displaySelector.addEventListener('change', function() {
-        if (this.value === 'goal') {
-          goalDisplay.style.display = 'block';
-          transformationDisplay.style.display = 'none';
-        } else {
-          goalDisplay.style.display = 'none';
-          transformationDisplay.style.display = 'block';
-        }
+      displaySelector.addEventListener('change', syncDisplay);
+
+      // Point-cloud layer toggles
+      document.querySelectorAll('[data-pc-layer]').forEach(function(input) {
+        input.addEventListener('change', function() {
+          this.closest('.pc-chip').classList.toggle('is-on', this.checked);
+          if (viewer) viewer.setLayerVisible(this.dataset.pcLayer, this.checked);
+        });
       });
+
+      document.querySelector('[data-pc-reset]').addEventListener('click', function() {
+        if (viewer) viewer.resetView();
+      });
+
+      syncDisplay();
     </script>
 
     <!-- BibTex -->
